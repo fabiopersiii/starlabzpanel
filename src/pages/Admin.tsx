@@ -67,17 +67,15 @@ const Admin = () => {
   
   // Reseta para valores padrão
   const handleReset = () => {
-    const defaults = resetToDefaults();
-    setEditEndpoints({
-      base: defaults.base,
-      auth: defaults.auth,
-      qrcode: defaults.qrcode,
-      restart: defaults.restart,
-      disconnect: defaults.disconnect,
-      status: defaults.status,
-      instancia: defaults.instancia,
-      instancia: defaults.instancia
-    });
+    const defaults = resetToDefaults();      setEditEndpoints({
+        base: defaults.base,
+        auth: defaults.auth,
+        qrcode: defaults.qrcode,
+        restart: defaults.restart,
+        disconnect: defaults.disconnect,
+        status: defaults.status,
+        instancia: defaults.instancia
+      });
     // Recarregar os endpoints no serviço de API
     apiService.reloadEndpoints();
   };
