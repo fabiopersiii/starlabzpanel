@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,14 @@ import { useEndpoints } from "@/hooks/useEndpoints";
 import { AlertCircle, Save, RotateCcw, Lock, ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiService } from "@/services/apiService";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Footer } from "@/components/Footer";
+import { authMiddleware } from "@/lib/authMiddleware";
 
 const ADMIN_PASSWORD = "starlabzadmin"; // Esta senha deve ser armazenada com mais segurança em produção
 
 const Admin = () => {
+  const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +31,15 @@ const Admin = () => {
     status: endpoints.status,
     instancia: endpoints.instancia
   });
+
+  useEffect(() => {
+    // Verifica se o usuário está autenticado e tem permissão de admin
+    if (!authMiddleware.isAuthenticated() || !authMiddleware.hasRole('admin')) {
+      navigate('/');
+      toast.error("Acesso não autorizado");
+      return;
+    }
+  }, [navigate]);
   
   // Tenta fazer login
   const handleLogin = () => {
