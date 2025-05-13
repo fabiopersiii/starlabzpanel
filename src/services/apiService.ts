@@ -1,6 +1,7 @@
 import { EndpointUrls } from "@/hooks/useEndpoints";
 import { rateLimiter } from '@/lib/rateLimiter';
 import { authMiddleware } from '@/lib/authMiddleware';
+import { encryptData } from '@/lib/encryption';
 
 class ApiError extends Error {
   constructor(message: string, public status?: number) {
@@ -56,10 +57,29 @@ const convertConfigResponse = (config: ConfigResponse): EndpointUrls => ({
   instancia: config.Instancia
 });
 
+// Função para criptografar dados sensíveis
+const encryptSensitiveData = (data: string): string => {
+  return btoa(data); // Versão básica - em produção use uma criptografia mais robusta
+};
+
 const handleRequest = async (url: string, options: RequestInit = {}): Promise<Response> => {
   if (!rateLimiter.canMakeRequest()) {
     const timeToReset = rateLimiter.getTimeToReset();
     throw new ApiError(`Limite de requisições excedido. Tente novamente em ${Math.ceil(timeToReset / 1000)} segundos.`);
+  }
+
+  // Se houver um body e for uma string JSON, vamos processar os dados sensíveis
+  if (options.body && typeof options.body === 'string') {
+    try {
+      const data = JSON.parse(options.body);
+      // Criptografa senha se existir
+      if (data.password) {
+        data.password = encryptSensitiveData(data.password);
+      }
+      options.body = JSON.stringify(data);
+    } catch (e) {
+      console.error('Erro ao processar body da requisição:', e);
+    }
   }
 
   try {
@@ -153,9 +173,14 @@ const getUrl = (endpoint: keyof Omit<EndpointUrls, "base">): string => {
 export const apiService = {
   async login(payload: AuthPayload): Promise<ApiResponse> {
     try {
+      const securePayload = {
+        ...payload,
+        password: encryptData(payload.password)
+      };
+
       const response = await handleRequest(getUrl('auth'), {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify(securePayload)
       });
       
       const data = await response.json();
@@ -247,9 +272,14 @@ export const apiService = {
 
   async postInstanceWebhook(data: { username: string; password: string; instancia: string }) {
     try {
+      const secureData = {
+        ...data,
+        password: encryptData(data.password)
+      };
+      
       const response = await handleRequest(`${API_URL}/instancia`, {
         method: 'POST',
-        body: JSON.stringify(data)
+        body: JSON.stringify(secureData)
       });
 
       return await response.json();
@@ -269,9 +299,14 @@ export const apiService = {
     foto?: string;
   }>> {
     try {
+      const secureCredentials = {
+        ...credentials,
+        password: encryptData(credentials.password)
+      };
+
       const response = await handleRequest(`${endpoints.base}${endpoints.auth}`, {
         method: 'POST',
-        body: JSON.stringify(credentials)
+        body: JSON.stringify(secureCredentials)
       });
 
       const data = await response.json();
