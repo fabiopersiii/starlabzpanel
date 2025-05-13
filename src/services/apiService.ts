@@ -1,4 +1,13 @@
 import { EndpointUrls } from "@/hooks/useEndpoints";
+import { rateLimiter } from '@/lib/rateLimiter';
+import { authMiddleware } from '@/lib/authMiddleware';
+
+class ApiError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 interface AuthPayload {
   username: string;
@@ -16,6 +25,7 @@ interface ApiResponse {
   nome?: string;
   telefone?: string;
   foto?: string;
+  token?: string;
 }
 
 interface ConfigResponse {
@@ -30,6 +40,11 @@ interface ConfigResponse {
 
 let endpoints: EndpointUrls;
 
+// Configuração do ambiente
+const API_URL = import.meta.env.VITE_API_URL || 'https://webhook.dpscloud.online/webhook';
+const API_KEY = import.meta.env.VITE_API_KEY;
+const IS_PROD = import.meta.env.VITE_NODE_ENV === 'production';
+
 // Função para converter a resposta da API para o formato usado internamente
 const convertConfigResponse = (config: ConfigResponse): EndpointUrls => ({
   base: config.BaseUrl,
@@ -41,10 +56,37 @@ const convertConfigResponse = (config: ConfigResponse): EndpointUrls => ({
   instancia: config.Instancia
 });
 
+const handleRequest = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  if (!rateLimiter.canMakeRequest()) {
+    const timeToReset = rateLimiter.getTimeToReset();
+    throw new ApiError(`Limite de requisições excedido. Tente novamente em ${Math.ceil(timeToReset / 1000)} segundos.`);
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(`HTTP error! status: ${response.status}`, response.status);
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('Erro na requisição: ' + (error as Error).message);
+  }
+};
+
 // Verifica se há conexão com a internet
 const checkOnline = async (): Promise<boolean> => {
   try {
-    await fetch('https://webhook.dpscloud.online/webhook/saas', { method: 'HEAD' });
+    await handleRequest(`${API_URL}/saas`, { method: 'HEAD' });
     return true;
   } catch {
     return false;
@@ -54,34 +96,29 @@ const checkOnline = async (): Promise<boolean> => {
 // Carrega os endpoints da API ou usa o cache do localStorage
 const loadEndpoints = async (): Promise<EndpointUrls> => {
   try {
-    // Primeiro verifica se está online
     const isOnline = await checkOnline();
     
     if (isOnline) {
-      // Se estiver online, sempre tenta carregar da API primeiro
-      const response = await fetch('https://webhook.dpscloud.online/webhook/saas');
-      if (!response.ok) throw new Error('Falha ao carregar configurações');
-    
+      const response = await handleRequest(`${API_URL}/saas`);
       const data = await response.json();
-      const config = convertConfigResponse(data[0]); // API retorna um array
+      const config = convertConfigResponse(data[0]);
     
-      // Salva no localStorage para uso offline
-      localStorage.setItem("starlabz_endpoints", JSON.stringify(config));
+      if (!IS_PROD) {
+        localStorage.setItem("starlabz_endpoints", JSON.stringify(config));
+      }
       return config;
     }
 
-    // Se estiver offline, tenta usar o cache do localStorage
     const saved = localStorage.getItem("starlabz_endpoints");
     if (saved) {
       return JSON.parse(saved);
     }
     
-    throw new Error('Sem conexão e sem cache local');
-  } catch (e) {
-    console.error("Erro ao carregar endpoints:", e);
-    // Retorna valores padrão em caso de erro
+    throw new ApiError('Sem conexão e sem cache local');
+  } catch (error) {
+    console.error("Erro ao carregar endpoints:", error);
     return {
-      base: "https://webhook.dpscloud.online/webhook",
+      base: API_URL,
       auth: "/auth",
       qrcode: "/qrcode",
       restart: "/restart",
@@ -94,7 +131,7 @@ const loadEndpoints = async (): Promise<EndpointUrls> => {
 
 // Inicializa os endpoints com valores padrão e depois carrega da API
 endpoints = {
-  base: "https://webhook.dpscloud.online/webhook",
+  base: API_URL,
   auth: "/auth",
   qrcode: "/qrcode",
   restart: "/restart",
@@ -116,24 +153,34 @@ const getUrl = (endpoint: keyof Omit<EndpointUrls, "base">): string => {
 export const apiService = {
   async login(payload: AuthPayload): Promise<ApiResponse> {
     try {
-      const response = await fetch(getUrl('auth'), {
+      const response = await handleRequest(getUrl('auth'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
-      return await response.json();
+      const data = await response.json();
+
+      // Se o login for bem-sucedido e houver um token
+      if (data.status === "success" && data.token) {
+        authMiddleware.setToken(data.token);
+      }
+      
+      return data;
     } catch (error) {
       console.error("Erro no login:", error);
       return { status: "error", mensagem: "Erro ao conectar com o servidor" };
     }
   },
-  
+
+  // Verifica se o usuário está autenticado antes de fazer requisições
   async generateQRCode(payload: InstancePayload): Promise<ApiResponse> {
+    if (!authMiddleware.isAuthenticated()) {
+      return { status: "error", mensagem: "Usuário não autenticado" };
+    }
+
     try {
-      const response = await fetch(getUrl('qrcode'), {
+      const response = await handleRequest(getUrl('qrcode'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
@@ -145,10 +192,13 @@ export const apiService = {
   },
   
   async restartInstance(payload: InstancePayload): Promise<ApiResponse> {
+    if (!authMiddleware.isAuthenticated()) {
+      return { status: "error", mensagem: "Usuário não autenticado" };
+    }
+
     try {
-      const response = await fetch(getUrl('restart'), {
+      const response = await handleRequest(getUrl('restart'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
@@ -160,10 +210,13 @@ export const apiService = {
   },
   
   async disconnectAccount(payload: InstancePayload): Promise<ApiResponse> {
+    if (!authMiddleware.isAuthenticated()) {
+      return { status: "error", mensagem: "Usuário não autenticado" };
+    }
+
     try {
-      const response = await fetch(getUrl('disconnect'), {
+      const response = await handleRequest(getUrl('disconnect'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
@@ -175,10 +228,13 @@ export const apiService = {
   },
   
   async checkStatus(payload: InstancePayload): Promise<ApiResponse> {
+    if (!authMiddleware.isAuthenticated()) {
+      return { status: "error", mensagem: "Usuário não autenticado" };
+    }
+
     try {
-      const response = await fetch(getUrl('status'), {
+      const response = await handleRequest(getUrl('status'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
@@ -191,17 +247,10 @@ export const apiService = {
 
   async postInstanceWebhook(data: { username: string; password: string; instancia: string }) {
     try {
-      const response = await fetch('https://webhook.dpscloud.online/webhook/instancia', {
+      const response = await handleRequest(`${API_URL}/instancia`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(data)
       });
-
-      if (!response.ok) {
-        throw new Error('Falha ao enviar dados para o webhook');
-      }
 
       return await response.json();
     } catch (error) {
@@ -220,17 +269,10 @@ export const apiService = {
     foto?: string;
   }>> {
     try {
-      const response = await fetch(`${endpoints.base}${endpoints.auth}`, {
+      const response = await handleRequest(`${endpoints.base}${endpoints.auth}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(credentials)
       });
-
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
-      }
 
       const data = await response.json();
       
