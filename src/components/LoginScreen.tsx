@@ -22,6 +22,16 @@ interface LoginScreenProps {
   onLogin: (username: string, phone: string, instanceData: Instance) => void;
 }
 
+// Função para sanitizar dados sensíveis para logs
+const sanitizeDataForLogs = (data: any) => {
+  if (!data) return data;
+  const sanitized = { ...data };
+  if (sanitized.password) {
+    sanitized.password = '********';
+  }
+  return sanitized;
+};
+
 export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +52,9 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
     
     try {
       const response = await authService.login(username, password);
+      
+      // Log seguro
+      console.debug('Login response:', sanitizeDataForLogs(response));
       
       // Se a resposta for um array, significa que há múltiplas instâncias
       if (Array.isArray(response)) {
