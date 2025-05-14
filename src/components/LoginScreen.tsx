@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardFooter } from "@/components/ui/card";
 import { AlertCircle, User, Lock, ArrowRight } from "lucide-react";
 import { Footer } from "@/components/Footer";
-import { apiService } from "@/services/apiService";
+import { authService } from "@/services/authService";
 import { InstanceSelectionDialog } from "@/components/InstanceSelectionDialog";
 
 interface Instance {
@@ -29,7 +29,6 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [showInstanceDialog, setShowInstanceDialog] = useState(false);
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
@@ -42,7 +41,7 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
     setIsLoading(true);
     
     try {
-      const response = await apiService.login({ username, password });
+      const response = await authService.login(username, password);
       
       // Se a resposta for um array, significa que há múltiplas instâncias
       if (Array.isArray(response)) {
@@ -58,7 +57,6 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
       }
       
       if (response.mensagem === "Login efetuado com sucesso!") {
-        // Garantir que todos os dados necessários estejam presentes
         const instanceData: Instance = {
           ...response,
           username,
@@ -171,7 +169,7 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
             setIsLoading(true);
             
             // Chama o webhook com os dados necessários
-            const webhookResponse = await apiService.postInstanceWebhook({
+            const webhookResponse = await authService.postInstanceWebhook({
               username,
               password,
               instancia: selectedInstance.instancia

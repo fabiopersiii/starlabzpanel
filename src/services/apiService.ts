@@ -113,16 +113,30 @@ const getUrl = (endpoint: keyof Omit<EndpointUrls, "base">): string => {
   return `${endpoints.base}${endpoints[endpoint]}`;
 };
 
-export const apiService = {
-  async login(payload: AuthPayload): Promise<ApiResponse> {
+export const apiService = {  async login(payload: AuthPayload): Promise<ApiResponse> {
     try {
+      const sanitizedPayload = {
+        username: sanitizeInput(payload.username),
+        password: payload.password // Não sanitizamos a senha, mas ela será hasheada no servidor
+      };
+      
       const response = await fetch(getUrl('auth'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-API-Key': import.meta.env.VITE_API_KEY || ''
+        },
+        body: JSON.stringify(sanitizedPayload),
+        credentials: 'include' // Permite cookies para refresh token
       });
       
-      return await response.json();
+      const data = await response.json();
+      
+      if (data.token && data.refreshToken) {
+        auth.setSession(data.token, data.refreshToken);
+      }
+      
+      return data;
     } catch (error) {
       console.error("Erro no login:", error);
       return { status: "error", mensagem: "Erro ao conectar com o servidor" };

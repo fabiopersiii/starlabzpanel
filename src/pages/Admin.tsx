@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useEndpoints } from "@/hooks/useEndpoints";
-import { AlertCircle, Save, RotateCcw, Lock, ArrowLeft } from "lucide-react";
+import { AlertCircle, Save, RotateCcw, Lock, ArrowLeft, XCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiService } from "@/services/apiService";
 import { Link } from "react-router-dom";
@@ -18,6 +18,7 @@ const Admin = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { endpoints, updateEndpoints, resetToDefaults } = useEndpoints();
+  const [instanceStatus, setInstanceStatus] = useState("error");
   
   // Estado para armazenar os valores editados
   const [editEndpoints, setEditEndpoints] = useState({
@@ -64,7 +65,6 @@ const Admin = () => {
       restart: defaults.restart,
       disconnect: defaults.disconnect,
       status: defaults.status,
-      instancia: defaults.instancia,
       instancia: defaults.instancia
     });
     // Recarregar os endpoints no serviço de API
@@ -139,6 +139,14 @@ const Admin = () => {
           <AlertDescription>
             Alterar os endpoints pode causar mau funcionamento do sistema. 
             Certifique-se de saber o que está fazendo.
+          </AlertDescription>
+        </Alert>
+
+        <Alert className="mb-6 bg-red-100 border-red-400">
+          <XCircle className="h-4 w-4 text-red-600" />
+          <AlertTitle className="text-red-600">Status da Instância: Erro</AlertTitle>
+          <AlertDescription className="text-red-500">
+            A instância do WhatsApp está com problemas. Verifique a conexão ou tente reiniciar.
           </AlertDescription>
         </Alert>
         
