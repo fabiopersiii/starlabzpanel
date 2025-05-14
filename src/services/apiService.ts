@@ -1,4 +1,5 @@
 import { EndpointUrls } from "@/hooks/useEndpoints";
+import { auth } from "@/lib/auth";
 
 interface AuthPayload {
   username: string;
@@ -17,6 +18,11 @@ interface ApiResponse {
   telefone?: string;
   foto?: string;
 }
+
+// Simple input sanitization function to prevent XSS attacks
+const sanitizeInput = (input: string): string => {
+  return input.replace(/[<>]/g, '');
+};
 
 interface ConfigResponse {
   BaseUrl: string;
@@ -44,7 +50,7 @@ const convertConfigResponse = (config: ConfigResponse): EndpointUrls => ({
 // Verifica se há conexão com a internet
 const checkOnline = async (): Promise<boolean> => {
   try {
-    await fetch('https://webhook.dpscloud.online/webhook/saas', { method: 'HEAD' });
+    await fetch('https://webhook.dpscloud.online/webhook/saas', { method: 'GET' });
     return true;
   } catch {
     return false;
