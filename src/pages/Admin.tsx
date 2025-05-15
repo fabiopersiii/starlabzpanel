@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,6 @@ const Admin = () => {
   
   // Reseta para valores padrão
   const handleReset = () => {
-<<<<<<< HEAD
     const defaults = resetToDefaults();
     setEditEndpoints({
       base: defaults.base,
@@ -79,17 +78,6 @@ const Admin = () => {
       status: defaults.status,
       instancia: defaults.instancia
     });
-=======
-    const defaults = resetToDefaults();      setEditEndpoints({
-        base: defaults.base,
-        auth: defaults.auth,
-        qrcode: defaults.qrcode,
-        restart: defaults.restart,
-        disconnect: defaults.disconnect,
-        status: defaults.status,
-        instancia: defaults.instancia
-      });
->>>>>>> 614aa140824928cf9384ac7a47c208d33a17f6ce
     // Recarregar os endpoints no serviço de API
     apiService.reloadEndpoints();
   };

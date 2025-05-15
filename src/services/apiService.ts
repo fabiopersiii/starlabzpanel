@@ -1,18 +1,6 @@
 import { EndpointUrls } from "@/hooks/useEndpoints";
-<<<<<<< HEAD
 import { auth } from "@/lib/auth";
-=======
-import { rateLimiter } from '@/lib/rateLimiter';
-import { authMiddleware } from '@/lib/authMiddleware';
-import { encryptData } from '@/lib/encryption';
-
-class ApiError extends Error {
-  constructor(message: string, public status?: number) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
->>>>>>> 614aa140824928cf9384ac7a47c208d33a17f6ce
+import { AUTH_CONFIG } from "@/config/auth.config";
 
 interface AuthPayload {
   username: string;
@@ -72,25 +60,6 @@ const encryptSensitiveData = (data: string): string => {
 };
 
 const handleRequest = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  if (!rateLimiter.canMakeRequest()) {
-    const timeToReset = rateLimiter.getTimeToReset();
-    throw new ApiError(`Limite de requisições excedido. Tente novamente em ${Math.ceil(timeToReset / 1000)} segundos.`);
-  }
-
-  // Se houver um body e for uma string JSON, vamos processar os dados sensíveis
-  if (options.body && typeof options.body === 'string') {
-    try {
-      const data = JSON.parse(options.body);
-      // Criptografa senha se existir
-      if (data.password) {
-        data.password = encryptSensitiveData(data.password);
-      }
-      options.body = JSON.stringify(data);
-    } catch (e) {
-      console.error('Erro ao processar body da requisição:', e);
-    }
-  }
-
   try {
     const response = await fetch(url, {
       ...options,
@@ -102,24 +71,19 @@ const handleRequest = async (url: string, options: RequestInit = {}): Promise<Re
     });
 
     if (!response.ok) {
-      throw new ApiError(`HTTP error! status: ${response.status}`, response.status);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     return response;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError('Erro na requisição: ' + (error as Error).message);
+    throw new Error('Erro na requisição: ' + (error as Error).message);
   }
 };
 
 // Verifica se há conexão com a internet
 const checkOnline = async (): Promise<boolean> => {
   try {
-<<<<<<< HEAD
     await fetch('https://webhook.dpscloud.online/webhook/saas', { method: 'GET' });
-=======
-    await handleRequest(`${API_URL}/saas`, { method: 'HEAD' });
->>>>>>> 614aa140824928cf9384ac7a47c208d33a17f6ce
     return true;
   } catch {
     return false;
@@ -147,7 +111,7 @@ const loadEndpoints = async (): Promise<EndpointUrls> => {
       return JSON.parse(saved);
     }
     
-    throw new ApiError('Sem conexão e sem cache local');
+    throw new Error('Sem conexão e sem cache local');
   } catch (error) {
     console.error("Erro ao carregar endpoints:", error);
     return {
@@ -183,45 +147,29 @@ const getUrl = (endpoint: keyof Omit<EndpointUrls, "base">): string => {
   return `${endpoints.base}${endpoints[endpoint]}`;
 };
 
-export const apiService = {  async login(payload: AuthPayload): Promise<ApiResponse> {
+export const apiService = {
+  async login(payload: AuthPayload): Promise<ApiResponse> {
     try {
-<<<<<<< HEAD
       const sanitizedPayload = {
         username: sanitizeInput(payload.username),
-        password: payload.password // Não sanitizamos a senha, mas ela será hasheada no servidor
+        password: payload.password // A senha não é sanitizada, mas será hasheada no servidor
       };
       
       const response = await fetch(getUrl('auth'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-API-Key': import.meta.env.VITE_API_KEY || ''
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
         },
-        body: JSON.stringify(sanitizedPayload),
-        credentials: 'include' // Permite cookies para refresh token
+        body: JSON.stringify(sanitizedPayload)
       });
       
       const data = await response.json();
       
       if (data.token && data.refreshToken) {
         auth.setSession(data.token, data.refreshToken);
-=======
-      const securePayload = {
-        ...payload,
-        password: encryptData(payload.password)
-      };
-
-      const response = await handleRequest(getUrl('auth'), {
-        method: 'POST',
-        body: JSON.stringify(securePayload)
-      });
-      
-      const data = await response.json();
-
-      // Se o login for bem-sucedido e houver um token
-      if (data.status === "success" && data.token) {
-        authMiddleware.setToken(data.token);
->>>>>>> 614aa140824928cf9384ac7a47c208d33a17f6ce
       }
       
       return data;
@@ -230,16 +178,21 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
       return { status: "error", mensagem: "Erro ao conectar com o servidor" };
     }
   },
-
-  // Verifica se o usuário está autenticado antes de fazer requisições
+  
   async generateQRCode(payload: InstancePayload): Promise<ApiResponse> {
-    if (!authMiddleware.isAuthenticated()) {
+    if (!auth.isAuthenticated()) {
       return { status: "error", mensagem: "Usuário não autenticado" };
     }
 
     try {
-      const response = await handleRequest(getUrl('qrcode'), {
+      const response = await fetch(getUrl('qrcode'), {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(payload)
       });
       
@@ -251,13 +204,19 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
   },
   
   async restartInstance(payload: InstancePayload): Promise<ApiResponse> {
-    if (!authMiddleware.isAuthenticated()) {
+    if (!auth.isAuthenticated()) {
       return { status: "error", mensagem: "Usuário não autenticado" };
     }
 
     try {
-      const response = await handleRequest(getUrl('restart'), {
+      const response = await fetch(getUrl('restart'), {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(payload)
       });
       
@@ -269,13 +228,19 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
   },
   
   async disconnectAccount(payload: InstancePayload): Promise<ApiResponse> {
-    if (!authMiddleware.isAuthenticated()) {
+    if (!auth.isAuthenticated()) {
       return { status: "error", mensagem: "Usuário não autenticado" };
     }
 
     try {
-      const response = await handleRequest(getUrl('disconnect'), {
+      const response = await fetch(getUrl('disconnect'), {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(payload)
       });
       
@@ -287,13 +252,19 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
   },
   
   async checkStatus(payload: InstancePayload): Promise<ApiResponse> {
-    if (!authMiddleware.isAuthenticated()) {
+    if (!auth.isAuthenticated()) {
       return { status: "error", mensagem: "Usuário não autenticado" };
     }
 
     try {
-      const response = await handleRequest(getUrl('status'), {
+      const response = await fetch(getUrl('status'), {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(payload)
       });
       
@@ -308,11 +279,17 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
     try {
       const secureData = {
         ...data,
-        password: encryptData(data.password)
+        password: encryptSensitiveData(data.password)
       };
       
-      const response = await handleRequest(`${API_URL}/instancia`, {
+      const response = await fetch(`${API_URL}/instancia`, {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(secureData)
       });
 
@@ -335,11 +312,17 @@ export const apiService = {  async login(payload: AuthPayload): Promise<ApiRespo
     try {
       const secureCredentials = {
         ...credentials,
-        password: encryptData(credentials.password)
+        password: encryptSensitiveData(credentials.password)
       };
 
-      const response = await handleRequest(`${endpoints.base}${endpoints.auth}`, {
+      const response = await fetch(`${endpoints.base}${endpoints.auth}`, {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AUTH_CONFIG.JWT_SECRET}`,
+          'X-Algorithm': AUTH_CONFIG.JWT_ALGORITHM,
+          'X-Key-Type': AUTH_CONFIG.KEY_TYPE
+        },
         body: JSON.stringify(secureCredentials)
       });
 
